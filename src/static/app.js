@@ -43,6 +43,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Authentication state
   let currentUser = null;
+  let currentToken = null;
 
   // Time range mappings for the dropdown
   const timeRanges = {
@@ -100,16 +101,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Check if user is already logged in (from localStorage)
   function checkAuthentication() {
-    const savedUser = localStorage.getItem("currentUser");
-    if (savedUser) {
+    const savedSession = localStorage.getItem("authSession");
+    if (savedSession) {
       try {
-        currentUser = JSON.parse(savedUser);
+        const parsed = JSON.parse(savedSession);
+        currentUser = parsed.user || null;
+        currentToken = parsed.token || null;
         updateAuthUI();
         // Verify the stored user with the server
-        validateUserSession(currentUser.username);
+        validateUserSession();
       } catch (error) {
-        console.error("Error parsing saved user", error);
+        console.error("Error parsing saved auth session", error);
         logout(); // Clear invalid data
+      }
+    } else {
+      // Clean up legacy auth storage key from previous versions.
+      const legacyUser = localStorage.getItem("currentUser");
+      if (legacyUser) {
+        localStorage.removeItem("currentUser");
       }
     }
 
@@ -117,12 +126,26 @@ document.addEventListener("DOMContentLoaded", () => {
     updateAuthBodyClass();
   }
 
+  function getAuthHeaders() {
+    if (!currentToken) {
+      return {};
+    }
+    return {
+      Authorization: `Bearer ${currentToken}`,
+    };
+  }
+
   // Validate user session with the server
-  async function validateUserSession(username) {
+  async function validateUserSession() {
+    if (!currentToken) {
+      logout();
+      return;
+    }
+
     try {
-      const response = await fetch(
-        `/auth/check-session?username=${encodeURIComponent(username)}`
-      );
+      const response = await fetch(`/auth/check-session`, {
+        headers: getAuthHeaders(),
+      });
 
       if (!response.ok) {
         // Session invalid, log out
@@ -133,7 +156,10 @@ document.addEventListener("DOMContentLoaded", () => {
       // Session is valid, update user data
       const userData = await response.json();
       currentUser = userData;
-      localStorage.setItem("currentUser", JSON.stringify(userData));
+      localStorage.setItem(
+        "authSession",
+        JSON.stringify({ user: userData, token: currentToken })
+      );
       updateAuthUI();
     } catch (error) {
       console.error("Error validating session:", error);
@@ -169,14 +195,13 @@ document.addEventListener("DOMContentLoaded", () => {
   // Login function
   async function login(username, password) {
     try {
-      const response = await fetch(
-        `/auth/login?username=${encodeURIComponent(
-          username
-        )}&password=${encodeURIComponent(password)}`,
-        {
-          method: "POST",
-        }
-      );
+      const response = await fetch(`/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username, password }),
+      });
 
       const data = await response.json();
 
@@ -189,8 +214,16 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       // Login successful
-      currentUser = data;
-      localStorage.setItem("currentUser", JSON.stringify(data));
+      currentToken = data.token;
+      currentUser = {
+        username: data.username,
+        display_name: data.display_name,
+        role: data.role,
+      };
+      localStorage.setItem(
+        "authSession",
+        JSON.stringify({ user: currentUser, token: currentToken })
+      );
       updateAuthUI();
       closeLoginModalHandler();
       showMessage(`Welcome, ${currentUser.display_name}!`, "success");
@@ -203,9 +236,21 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Logout function
-  function logout() {
+  async function logout() {
+    if (currentToken) {
+      try {
+        await fetch(`/auth/logout`, {
+          method: "POST",
+          headers: getAuthHeaders(),
+        });
+      } catch (error) {
+        console.error("Error during logout:", error);
+      }
+    }
+
     currentUser = null;
-    localStorage.removeItem("currentUser");
+    currentToken = null;
+    localStorage.removeItem("authSession");
     updateAuthUI();
     showMessage("You have been logged out.", "info");
   }
@@ -776,9 +821,10 @@ document.addEventListener("DOMContentLoaded", () => {
               activity
             )}/unregister?email=${encodeURIComponent(
               email
-            )}&teacher_username=${encodeURIComponent(currentUser.username)}`,
+            )}`,
             {
               method: "POST",
+              headers: getAuthHeaders(),
             }
           );
 
@@ -831,11 +877,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const response = await fetch(
         `/activities/${encodeURIComponent(
           activity
-        )}/signup?email=${encodeURIComponent(
-          email
-        )}&teacher_username=${encodeURIComponent(currentUser.username)}`,
+        )}/signup?email=${encodeURIComponent(email)}`,
         {
           method: "POST",
+          headers: getAuthHeaders(),
         }
       );
 
