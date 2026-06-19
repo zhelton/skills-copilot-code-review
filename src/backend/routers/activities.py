@@ -5,6 +5,7 @@ Endpoints for the High School Management System API
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any, Optional, List
 from pydantic import EmailStr
+from datetime import datetime
 
 from ..database import activities_collection
 from .auth import get_current_teacher
@@ -13,6 +14,15 @@ router = APIRouter(
     prefix="/activities",
     tags=["activities"]
 )
+
+
+def _is_valid_24h_time(value: str) -> bool:
+    """Return True only for HH:MM values in 24-hour format."""
+    try:
+        datetime.strptime(value, "%H:%M")
+        return True
+    except ValueError:
+        return False
 
 
 @router.get("", response_model=Dict[str, Any])
@@ -29,6 +39,24 @@ def get_activities(
     - start_time: Filter activities starting at or after this time (24-hour format, e.g., '14:30')
     - end_time: Filter activities ending at or before this time (24-hour format, e.g., '17:00')
     """
+    if start_time and not _is_valid_24h_time(start_time):
+        raise HTTPException(
+            status_code=400,
+            detail="start_time must be in 24-hour HH:MM format"
+        )
+
+    if end_time and not _is_valid_24h_time(end_time):
+        raise HTTPException(
+            status_code=400,
+            detail="end_time must be in 24-hour HH:MM format"
+        )
+
+    if start_time and end_time and start_time > end_time:
+        raise HTTPException(
+            status_code=400,
+            detail="start_time cannot be later than end_time"
+        )
+
     # Build the query based on provided filters
     query = {}
 
