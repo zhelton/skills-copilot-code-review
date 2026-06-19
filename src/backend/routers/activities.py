@@ -4,6 +4,7 @@ Endpoints for the High School Management System API
 
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any, Optional, List
+from pydantic import EmailStr
 
 from ..database import activities_collection
 from .auth import get_current_teacher
@@ -69,7 +70,7 @@ def get_available_days() -> List[str]:
 @router.post("/{activity_name}/signup")
 def signup_for_activity(
     activity_name: str,
-    email: str,
+    email: EmailStr,
     _: Dict[str, Any] = Depends(get_current_teacher)
 ):
     """Sign up a student for an activity - requires teacher authentication"""
@@ -106,7 +107,7 @@ def signup_for_activity(
 @router.post("/{activity_name}/unregister")
 def unregister_from_activity(
     activity_name: str,
-    email: str,
+    email: EmailStr,
     _: Dict[str, Any] = Depends(get_current_teacher)
 ):
     """Remove a student from an activity - requires teacher authentication"""
