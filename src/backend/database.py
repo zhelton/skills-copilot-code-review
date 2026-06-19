@@ -2,6 +2,8 @@
 MongoDB database configuration and setup for Mergington High School API
 """
 
+import os
+
 from pymongo import MongoClient
 from argon2 import PasswordHasher, exceptions as argon2_exceptions
 
@@ -46,9 +48,8 @@ def init_database():
 
     # Initialize teacher accounts if empty
     if teachers_collection.count_documents({}) == 0:
-        for teacher in initial_teachers:
-            teachers_collection.insert_one(
-                {"_id": teacher["username"], **teacher})
+        for teacher in build_initial_teachers():
+            teachers_collection.insert_one({"_id": teacher["username"], **teacher})
 
 
 # Initial database if empty
@@ -187,23 +188,32 @@ initial_activities = {
     }
 }
 
-initial_teachers = [
-    {
-        "username": "mrodriguez",
-        "display_name": "Ms. Rodriguez",
-        "password": hash_password("art123"),
-        "role": "teacher"
-    },
-    {
-        "username": "mchen",
-        "display_name": "Mr. Chen",
-        "password": hash_password("chess456"),
-        "role": "teacher"
-    },
-    {
-        "username": "principal",
-        "display_name": "Principal Martinez",
-        "password": hash_password("admin789"),
-        "role": "admin"
-    }
-]
+def build_initial_teachers():
+    """Build initial teacher accounts from environment variables.
+
+    To seed credentials, set one or more of:
+    - MHS_PASSWORD_MRODRIGUEZ
+    - MHS_PASSWORD_MCHEN
+    - MHS_PASSWORD_PRINCIPAL
+    """
+    teacher_seed = [
+        ("mrodriguez", "Ms. Rodriguez", "teacher", "MHS_PASSWORD_MRODRIGUEZ"),
+        ("mchen", "Mr. Chen", "teacher", "MHS_PASSWORD_MCHEN"),
+        ("principal", "Principal Martinez", "admin", "MHS_PASSWORD_PRINCIPAL"),
+    ]
+
+    teachers = []
+    for username, display_name, role, env_var in teacher_seed:
+        password = os.getenv(env_var)
+        if not password:
+            continue
+        teachers.append(
+            {
+                "username": username,
+                "display_name": display_name,
+                "password": hash_password(password),
+                "role": role,
+            }
+        )
+
+    return teachers
